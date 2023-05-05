@@ -42,7 +42,7 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        . C:\dev\ros2_${{ matrix.ros-distribution }}\local_setup.ps1
+        . C:\dev\${{ matrix.ros-distribution }}\ros2-windows\local_setup.ps1
         .\get_repos.ps1
         .\build.ps1 -with_tests
 
@@ -57,5 +57,5 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        . C:\dev\ros2_${{ matrix.ros-distribution }}\local_setup.ps1
+        . C:\dev\${{ matrix.ros-distribution }}\ros2-windows\local_setup.ps1
         .\test.ps1
