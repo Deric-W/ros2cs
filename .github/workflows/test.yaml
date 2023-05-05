@@ -31,31 +31,31 @@ jobs:
         required-ros-distributions: ${{ matrix.ros-distribution }}
 
     - name: Invoke Ubuntu build script
-      if: runner.os == "Linux"
+      if: runner.os == 'Linux'
       shell: bash
       run: |
-        source /opt/ros/${{ matrix.ros_distribution }}/setup.bash
+        source /opt/ros/${{ matrix.ros-distribution }}/setup.bash
         ./get_repos.sh
         ./build.sh --with-tests
 
     - name: Invoke Windows build script
-      if: runner.os == "Windows"
+      if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        . C:\dev\ros2_${{ matrix.ros_distribution }}\local_setup.ps1
+        . C:\dev\ros2_${{ matrix.ros-distribution }}\local_setup.ps1
         .\get_repos.ps1
         .\build.ps1 -with_tests
 
     - name: Invoke Ubuntu test script
-      if: runner.os == "Linux"
+      if: runner.os == 'Linux'
       shell: bash
       run: |
-        source /opt/ros/${{ matrix.ros_distribution }}/setup.bash
+        source /opt/ros/${{ matrix.ros-distribution }}/setup.bash
         ./test.sh
 
     - name: Invoke Windows test script
-      if: runner.os == "Windows"
+      if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        . C:\dev\ros2_${{ matrix.ros_distribution }}\local_setup.ps1
+        . C:\dev\ros2_${{ matrix.ros-distribution }}\local_setup.ps1
         .\test.ps1
