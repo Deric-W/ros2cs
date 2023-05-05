@@ -12,7 +12,7 @@ jobs:
     strategy:
         matrix:
             os: [ubuntu-22.04, windows-2019]
-            ros-distribution: [galactic, humble]
+            ros-distribution: [humble]
 
     runs-on: ${{ matrix.os }}
 
