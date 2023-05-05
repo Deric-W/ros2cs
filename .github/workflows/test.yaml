@@ -1,0 +1,61 @@
+name: Test
+on:
+    workflow_dispatch:
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
+
+
+jobs:
+  test:
+    strategy:
+        matrix:
+            os: [ubuntu-22.04, windows-2019]
+            ros-distribution: [galactic, humble]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v3
+
+    - name: Install .NET SDK 6.0
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: "6"
+
+    - name: Setup ROS2
+      uses: ros-tooling/setup-ros@v0.6
+      with:
+        required-ros-distributions: ${{ matrix.ros-distribution }}
+
+    - name: Invoke Ubuntu build script
+      if: runner.os == "Linux"
+      shell: bash
+      run: |
+        source /opt/ros/${{ matrix.ros_distribution }}/setup.bash
+        ./get_repos.sh
+        ./build.sh --with-tests
+
+    - name: Invoke Windows build script
+      if: runner.os == "Windows"
+      shell: pwsh
+      run: |
+        . C:\dev\ros2_${{ matrix.ros_distribution }}\local_setup.ps1
+        .\get_repos.ps1
+        .\build.ps1 -with_tests
+
+    - name: Invoke Ubuntu test script
+      if: runner.os == "Linux"
+      shell: bash
+      run: |
+        source /opt/ros/${{ matrix.ros_distribution }}/setup.bash
+        ./test.sh
+
+    - name: Invoke Windows test script
+      if: runner.os == "Windows"
+      shell: pwsh
+      run: |
+        . C:\dev\ros2_${{ matrix.ros_distribution }}\local_setup.ps1
+        .\test.ps1
