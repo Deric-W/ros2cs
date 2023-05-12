@@ -27,6 +27,13 @@ jobs:
       with:
         dotnet-version: "6"
 
+    # set Python 3.7 as default since it is hardcoded by setup-ros
+    # see Issue ros-tooling/setup-ros#552
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.7"
+
     - name: Setup ROS2
       uses: ros-tooling/setup-ros@v0.6
       with:
