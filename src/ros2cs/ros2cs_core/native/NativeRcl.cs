@@ -316,6 +316,15 @@ namespace ROS2
         typeof(SubscriptionInitType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int ValidateTopicType(string topic, out int result, out UIntPtr invalid_index);
+    internal static ValidateTopicType
+        rcl_validate_topic_name =
+        (ValidateTopicType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
+        nativeRCL,
+        "rcl_validate_topic_name"),
+        typeof(ValidateTopicType));
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int SubscriptionFiniType(ref rcl_subscription_t subscription, ref rcl_node_t node);
     internal static SubscriptionFiniType
         rcl_subscription_fini =
