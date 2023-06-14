@@ -316,7 +316,7 @@ namespace ROS2
         typeof(SubscriptionInitType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int ValidateTopicType(string topic, out int result, out UIntPtr invalid_index);
+    internal delegate int ValidateTopicType([MarshalAs(48)] string topic, out int result, out UIntPtr invalid_index);
     internal static ValidateTopicType
         rcl_validate_topic_name =
         (ValidateTopicType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
