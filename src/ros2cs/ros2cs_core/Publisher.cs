@@ -46,6 +46,11 @@ namespace ROS2
 
       publisherOptions = NativeRclInterface.rclcs_publisher_create_options(qualityOfServiceProfile.handle);
 
+      int ret = NativeRcl.rcl_validate_topic_name(pubTopic, out int result, out UIntPtr index);
+      System.Console.WriteLine(
+        $"Topic validation for {pubTopic} returned {(RCLReturnEnum)ret} with result {(ValidationResult)result} and index {index}"
+      );
+
       IntPtr typeSupportHandle = MessageTypeSupportHelper.GetTypeSupportHandle<T>();
 
       publisherHandle = NativeRcl.rcl_get_zero_initialized_publisher();

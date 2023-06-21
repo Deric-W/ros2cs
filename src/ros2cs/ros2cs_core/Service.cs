@@ -70,6 +70,11 @@ namespace ROS2
 
       serviceOptions = NativeRclInterface.rclcs_service_create_options(qualityOfServiceProfile.handle);
 
+      int ret = NativeRcl.rcl_validate_topic_name(subTopic, out int result, out UIntPtr index);
+      System.Console.WriteLine(
+        $"Topic validation for {subTopic} returned {(RCLReturnEnum)ret} with result {(ValidationResult)result} and index {index}"
+      );
+
       I msg = new I();
       MessageInternals msgInternals = msg as MessageInternals;
       IntPtr typeSupportHandle = msgInternals.TypeSupportHandle;
