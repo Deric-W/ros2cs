@@ -14,6 +14,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ROS2
 {
@@ -25,6 +26,11 @@ namespace ROS2
     private static readonly DllLoadUtils dllLoadUtils = DllLoadUtilsFactory.GetDllLoadUtils();
     private static readonly IntPtr nativeRCL = dllLoadUtils.LoadLibraryNoSuffix("rcl");
     private static readonly IntPtr nativeRCUtils = dllLoadUtils.LoadLibraryNoSuffix("rcutils");
+
+    /// <summary>
+    /// Used for encoding node and topic names
+    /// </summary>
+    private static readonly Encoding Encoding = Encoding.UTF8;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate rcl_context_t GetZeroInitializedContextType();
@@ -99,13 +105,18 @@ namespace ROS2
         typeof(GetZeroInitializedNodeType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int NodeInitType(ref rcl_node_t node, string name, string node_namespace, ref rcl_context_t context, IntPtr default_options);
-    internal static NodeInitType
-        rcl_node_init =
+    private delegate int NodeInitType(ref rcl_node_t node, [In, MarshalAs(UnmanagedType.LPArray)] byte[] name, [In, MarshalAs(UnmanagedType.LPArray)] byte[] node_namespace, ref rcl_context_t context, IntPtr default_options);
+    private static NodeInitType
+        rcl_node_init_raw =
         (NodeInitType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_node_init"),
         typeof(NodeInitType));
+
+    internal static int rcl_node_init(ref rcl_node_t node, string name, string node_namespace, ref rcl_context_t context, IntPtr default_options)
+    {
+        return rcl_node_init_raw(ref node, Encoding.UTF8.GetBytes(name), Encoding.GetBytes(node_namespace), ref context, default_options);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int NodeFiniType(ref rcl_node_t node);
@@ -153,13 +164,18 @@ namespace ROS2
         typeof(GetZeroInitiazizedClientType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int ClientInitType(ref rcl_client_t client, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr client_options);
-    internal static ClientInitType
-        rcl_client_init =
+    private delegate int ClientInitType(ref rcl_client_t client, ref rcl_node_t node, IntPtr type_support_ptr,  [In, MarshalAs(UnmanagedType.LPArray)] byte[] topic_name, IntPtr client_options);
+    private static ClientInitType
+        rcl_client_init_raw =
         (ClientInitType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_client_init"),
         typeof(ClientInitType));
+    
+    internal static int rcl_client_init(ref rcl_client_t client, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr client_options)
+    {
+        return rcl_client_init_raw(ref client, ref node, type_support_ptr, Encoding.GetBytes(topic_name), client_options);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int ClientFiniType(ref rcl_client_t client, ref rcl_node_t node);
@@ -216,13 +232,18 @@ namespace ROS2
         typeof(GetZeroInitiazizedServiceType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int ServiceInitType(ref rcl_service_t service, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr service_options);
-    internal static ServiceInitType
-        rcl_service_init =
+    private delegate int ServiceInitType(ref rcl_service_t service, ref rcl_node_t node, IntPtr type_support_ptr,  [In, MarshalAs(UnmanagedType.LPArray)] byte[] topic_name, IntPtr service_options);
+    private static ServiceInitType
+        rcl_service_init_raw =
         (ServiceInitType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_service_init"),
         typeof(ServiceInitType));
+    
+    internal static int rcl_service_init(ref rcl_service_t service, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr service_options)
+    {
+        return rcl_service_init_raw(ref service, ref node, type_support_ptr, Encoding.GetBytes(topic_name), service_options);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int ServiceFiniType(ref rcl_service_t client, ref rcl_node_t node);
@@ -271,13 +292,18 @@ namespace ROS2
         typeof(GetZeroInitiazizedPublisherType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int PublisherInitType(ref rcl_publisher_t publisher, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr publisher_options);
-    internal static PublisherInitType
-        rcl_publisher_init =
+    private delegate int PublisherInitType(ref rcl_publisher_t publisher, ref rcl_node_t node, IntPtr type_support_ptr, [In, MarshalAs(UnmanagedType.LPArray)] byte[] topic_name, IntPtr publisher_options);
+    private static PublisherInitType
+        rcl_publisher_init_raw =
         (PublisherInitType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_publisher_init"),
         typeof(PublisherInitType));
+    
+    internal static int rcl_publisher_init(ref rcl_publisher_t publisher, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr publisher_options)
+    {
+        return rcl_publisher_init_raw(ref publisher, ref node, type_support_ptr, Encoding.GetBytes(topic_name), publisher_options);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int PublisherFiniType(ref rcl_publisher_t publisher, ref rcl_node_t node);
@@ -307,13 +333,18 @@ namespace ROS2
         typeof(GetZeroInitializedSubcriptionType));
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int SubscriptionInitType(ref rcl_subscription_t subscription, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr subscription_options);
-    internal static SubscriptionInitType
-        rcl_subscription_init =
+    private delegate int SubscriptionInitType(ref rcl_subscription_t subscription, ref rcl_node_t node, IntPtr type_support_ptr, [In, MarshalAs(UnmanagedType.LPArray)] byte[] topic_name, IntPtr subscription_options);
+    private static SubscriptionInitType
+        rcl_subscription_init_raw =
         (SubscriptionInitType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_subscription_init"),
         typeof(SubscriptionInitType));
+    
+    internal static int rcl_subscription_init(ref rcl_subscription_t subscription, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr subscription_options)
+    {
+        return rcl_subscription_init_raw(ref subscription, ref node, type_support_ptr, Encoding.GetBytes(topic_name), subscription_options);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int ValidateTopicType([MarshalAs(48)] string topic, out int result, out UIntPtr invalid_index);
