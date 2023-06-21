@@ -347,13 +347,18 @@ namespace ROS2
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int ValidateTopicType([MarshalAs(48)] string topic, out int result, out UIntPtr invalid_index);
-    internal static ValidateTopicType
-        rcl_validate_topic_name =
+    private delegate int ValidateTopicType([In, MarshalAs(UnmanagedType.LPArray)] byte[] topic, out int result, out UIntPtr invalid_index);
+    private static ValidateTopicType
+        rcl_validate_topic_name_raw =
         (ValidateTopicType)Marshal.GetDelegateForFunctionPointer(dllLoadUtils.GetProcAddress(
         nativeRCL,
         "rcl_validate_topic_name"),
         typeof(ValidateTopicType));
+    
+    internal static int rcl_validate_topic_name(string topic, out int result, out UIntPtr invalid_index)
+    {
+        return rcl_validate_topic_name_raw(Encoding.GetBytes(topic), out result, out invalid_index);
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int SubscriptionFiniType(ref rcl_subscription_t subscription, ref rcl_node_t node);
