@@ -28,9 +28,24 @@ namespace ROS2
     private static readonly IntPtr nativeRCUtils = dllLoadUtils.LoadLibraryNoSuffix("rcutils");
 
     /// <summary>
-    /// Used for encoding node and topic names
+    /// Transform a string into a null terminated C string.
     /// </summary>
-    private static readonly Encoding Encoding = Encoding.UTF8;
+    /// <param name="str"> String to transform. </param>
+    /// <param name="encoding"> Encoding to use, defaults to UTF-8. </param>
+    /// <returns> C string as a byte array. </returns>
+    private static byte[] StringToC(string str)
+    {
+        return StringToC(str, Encoding.UTF8);
+    }
+
+    /// <inheritdoc cref="StringToC"/>
+    private static byte[] StringToC(string str, Encoding encoding)
+    {
+        byte[] buffer = new byte[encoding.GetByteCount(str) + 1];
+        encoding.GetBytes(str, 0, str.Length, buffer, buffer.GetLowerBound(0));
+        buffer[buffer.GetUpperBound(0)] = 0;
+        return buffer;
+    }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate rcl_context_t GetZeroInitializedContextType();
@@ -115,7 +130,7 @@ namespace ROS2
 
     internal static int rcl_node_init(ref rcl_node_t node, string name, string node_namespace, ref rcl_context_t context, IntPtr default_options)
     {
-        return rcl_node_init_raw(ref node, Encoding.UTF8.GetBytes(name), Encoding.GetBytes(node_namespace), ref context, default_options);
+        return rcl_node_init_raw(ref node, StringToC(name), StringToC(node_namespace), ref context, default_options);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -174,7 +189,7 @@ namespace ROS2
     
     internal static int rcl_client_init(ref rcl_client_t client, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr client_options)
     {
-        return rcl_client_init_raw(ref client, ref node, type_support_ptr, Encoding.GetBytes(topic_name), client_options);
+        return rcl_client_init_raw(ref client, ref node, type_support_ptr, StringToC(topic_name), client_options);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -242,7 +257,7 @@ namespace ROS2
     
     internal static int rcl_service_init(ref rcl_service_t service, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr service_options)
     {
-        return rcl_service_init_raw(ref service, ref node, type_support_ptr, Encoding.GetBytes(topic_name), service_options);
+        return rcl_service_init_raw(ref service, ref node, type_support_ptr, StringToC(topic_name), service_options);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -302,7 +317,7 @@ namespace ROS2
     
     internal static int rcl_publisher_init(ref rcl_publisher_t publisher, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr publisher_options)
     {
-        return rcl_publisher_init_raw(ref publisher, ref node, type_support_ptr, Encoding.GetBytes(topic_name), publisher_options);
+        return rcl_publisher_init_raw(ref publisher, ref node, type_support_ptr, StringToC(topic_name), publisher_options);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -343,7 +358,7 @@ namespace ROS2
     
     internal static int rcl_subscription_init(ref rcl_subscription_t subscription, ref rcl_node_t node, IntPtr type_support_ptr, string topic_name, IntPtr subscription_options)
     {
-        return rcl_subscription_init_raw(ref subscription, ref node, type_support_ptr, Encoding.GetBytes(topic_name), subscription_options);
+        return rcl_subscription_init_raw(ref subscription, ref node, type_support_ptr, StringToC(topic_name), subscription_options);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -357,7 +372,7 @@ namespace ROS2
     
     internal static int rcl_validate_topic_name(string topic, out int result, out UIntPtr invalid_index)
     {
-        return rcl_validate_topic_name_raw(Encoding.GetBytes(topic), out result, out invalid_index);
+        return rcl_validate_topic_name_raw(StringToC(topic), out result, out invalid_index);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
