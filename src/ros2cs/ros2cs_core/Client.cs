@@ -16,8 +16,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using ROS2.Internal;
+using ROS2.Native;
 
 
 namespace ROS2
@@ -60,7 +62,7 @@ namespace ROS2
         {
             get
             {
-                bool ok = NativeRclInterface.rclcs_client_is_valid(this.Handle);
+                bool ok = NativeClientMethods.ros2cs_native_client_valid(this.Handle);
                 GC.KeepAlive(this);
                 return !ok;
             }
@@ -118,25 +120,23 @@ namespace ROS2
             );
 
             QualityOfServiceProfile qualityOfServiceProfile = qos ?? new QualityOfServiceProfile(QosPresetProfile.SERVICES_DEFAULT);
-
-            this.Options = NativeRclInterface.rclcs_client_create_options(qualityOfServiceProfile.handle);
-
             IntPtr typeSupportHandle = MessageTypeSupportHelper.GetTypeSupportHandle<I>();
 
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_client();
-            int ret = NativeRcl.rcl_client_init(
-                this.Handle,
-                this.Node.Handle,
-                typeSupportHandle,
-                this.Topic,
-                this.Options
+            (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
+                (out IntPtr options) => NativeClientMethods.ros2cs_native_init_client_options(
+                    qualityOfServiceProfile.handle,
+                    out options
+                ),
+                (IntPtr options, out IntPtr handle) => NativeClientMethods.ros2cs_native_init_client(
+                    this.Node.Handle,
+                    typeSupportHandle,
+                    this.Topic.ToRcl(),
+                    options,
+                    out handle
+                ),
+                options => { NativeClientMethods.ros2cs_native_dispose_client_options(options); return RclReturnCode.RCL_RET_OK; }
             );
-
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_OK)
-            {
-                this.FreeHandles();
-                Utils.CheckReturnEnum(ret);
-            }
+            GC.KeepAlive(qualityOfServiceProfile);
         }
 
         /// <remarks>
@@ -147,11 +147,11 @@ namespace ROS2
         public bool IsServiceAvailable()
         {
             bool available = false;
-            Utils.CheckReturnEnum(NativeRcl.rcl_service_server_is_available(
+            NativeClientMethods.rcl_service_server_is_available(
                 this.Node.Handle,
                 this.Handle,
                 out available
-            ));
+            ).Throw();
             GC.KeepAlive(this);
             return available;
         }
@@ -162,7 +162,7 @@ namespace ROS2
         /// <inheritdoc/>
         public bool TryProcess()
         {
-            rcl_rmw_request_id_t header = default(rcl_rmw_request_id_t);
+            rmw_request_id_t header = default(rmw_request_id_t);
             O message = new O();
             (TaskCompletionSource<O>, Task<O>) source;
             bool exists = false;
@@ -170,20 +170,20 @@ namespace ROS2
             lock (this.Requests)
             {
                 // prevent taking responses before RegisterSource was called
-                int ret = NativeRcl.rcl_take_response(
+                RclReturnCode ret = NativeClientMethods.rcl_take_response(
                     this.Handle,
                     ref header,
-                    (message as MessageInternals).Handle
+                  (message as MessageInternals).Handle
                 );
                 GC.KeepAlive(this);
 
-                switch ((RCLReturnEnum)ret)
+                switch (ret)
                 {
-                    case RCLReturnEnum.RCL_RET_CLIENT_TAKE_FAILED:
-                    case RCLReturnEnum.RCL_RET_CLIENT_INVALID:
+                    case RclReturnCode.RCL_RET_CLIENT_TAKE_FAILED:
+                    case RclReturnCode.RCL_RET_CLIENT_INVALID:
                         return false;
                     default:
-                        Utils.CheckReturnEnum(ret);
+                        ret.Throw();
                         break;
                 }
 
@@ -254,13 +254,11 @@ namespace ROS2
             long sequence_number = default(long);
             MessageInternals msgInternals = msg as MessageInternals;
             msgInternals.WriteNativeMessage();
-            Utils.CheckReturnEnum(
-                NativeRcl.rcl_send_request(
-                    this.Handle,
-                    msgInternals.Handle,
-                    out sequence_number
-                )
-            );
+            NativeClientMethods.rcl_send_request(
+                this.Handle,
+                msgInternals.Handle,
+                out sequence_number
+            ).Throw();
             GC.KeepAlive(this);
             return sequence_number;
         }
@@ -338,7 +336,7 @@ namespace ROS2
                 this.DisposeAllTasks();
             }
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_client_fini(this.Handle, this.Node.Handle));
+            NativeClientMethods.rcl_client_fini(this.Handle, this.Node.Handle).Throw();
             this.FreeHandles();
         }
 
@@ -351,7 +349,7 @@ namespace ROS2
             }
 
             this.DisposeAllTasks();
-            Utils.CheckReturnEnum(NativeRcl.rcl_client_fini(this.Handle, this.Node.Handle));
+            NativeClientMethods.rcl_client_fini(this.Handle, this.Node.Handle).Throw();
             this.FreeHandles();
         }
 
@@ -378,9 +376,9 @@ namespace ROS2
         /// </remarks>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_client(this.Handle);
+            NativeClientMethods.ros2cs_native_free_client(this.Handle);
             this.Handle = IntPtr.Zero;
-            NativeRclInterface.rclcs_client_dispose_options(this.Options);
+            NativeClientMethods.ros2cs_native_dispose_client_options(this.Options);
             this.Options = IntPtr.Zero;
         }
 
@@ -388,5 +386,69 @@ namespace ROS2
         {
             this.Dispose(false);
         }
+    }
+
+    internal static class NativeClientMethods
+    {
+        [return: MarshalAs(unmanagedType: UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern bool ros2cs_native_client_valid(IntPtr client);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_client_options(IntPtr qos, out IntPtr options);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void ros2cs_native_dispose_client_options(IntPtr options);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_client(IntPtr node, IntPtr typeSupport, [In] byte[] topic, IntPtr options, out IntPtr client);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void ros2cs_native_free_client(IntPtr client);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_service_server_is_available(IntPtr node, IntPtr client, out bool available);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_send_request(IntPtr client, IntPtr request, out long sequenceNumber);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_take_response(IntPtr client, [In, Out] ref rmw_request_id_t header, IntPtr response);
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_client_fini(IntPtr client, IntPtr node);
     }
 }
