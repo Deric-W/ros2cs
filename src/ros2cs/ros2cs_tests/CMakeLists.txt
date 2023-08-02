@@ -48,11 +48,9 @@ if(BUILD_TESTING)
     src/LargeMessageTest.cs
     src/MessagesTest.cs
     src/NodeTest.cs
-    src/NativeMetodsTest.cs
     src/ClientTest.cs
     src/ServiceTest.cs
     src/SubscriptionTest.cs
-    src/TestUtils.cs
     src/WaitSetTest.cs
     src/GuardConditionTest.cs
     src/ManualExecutorTest.cs

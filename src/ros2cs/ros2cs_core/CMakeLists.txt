@@ -57,8 +57,6 @@ endfunction()
 
 add_library(
   ros2cs_native SHARED
-  native/rcl_native_interface.c
-  native/rmw_native_interface.c
   native/client.c
   native/context.c
   native/error_handling.c
@@ -96,10 +94,6 @@ set(CS_INTERFACES
 )
 
 set(CS_NATIVE
-  native/RCLRet.cs
-  native/NativeRcl.cs
-  native/NativeRclInterface.cs
-  native/NativeRmwInterface.cs
   native/NativeTypes.cs
   native/RclError.cs
   native/RclReturnCode.cs
@@ -107,7 +101,6 @@ set(CS_NATIVE
 )
 
 set(CS_UTILS
-  utils/Utils.cs
   utils/LockedDictionary.cs
   utils/LockedCollection.cs
   utils/MappedValueDictionary.cs
