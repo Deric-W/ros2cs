@@ -18,6 +18,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -55,18 +57,25 @@ namespace ROS2
             get => this.ROSContext;
         }
 
-        private Context ROSContext;
+        private readonly Context ROSContext;
 
         /// <inheritdoc />
         public bool IsDisposed
         {
             get
             {
-                bool ok = NativeRclInterface.rclcs_wait_set_is_valid(this.Handle);
+                bool ok = ros2cs_native_wait_set_valid(this.Handle);
                 GC.KeepAlive(this);
                 return !ok;
             }
         }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_wait_set_valid(IntPtr waitSet);
 
         /// <inheritdoc />
         public int Count
@@ -99,6 +108,10 @@ namespace ROS2
 
         private readonly List<GuardCondition> CurrentGuardConditions = new List<GuardCondition>();
 
+        private delegate bool Getter(IntPtr waitSet, UIntPtr index, out IntPtr handle);
+
+        private delegate RclReturnCode Adder(IntPtr waitSet, IntPtr handle, out UIntPtr index);
+
         /// <summary>
         /// Construct a new instance.
         /// </summary>
@@ -106,24 +119,15 @@ namespace ROS2
         internal WaitSet(Context context)
         {
             this.ROSContext = context;
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_wait_set();
-            int ret = NativeRcl.rcl_wait_set_init(
-                this.Handle,
-                new UIntPtr(Convert.ToUInt32(this.CurrentSubscriptions.Capacity)),
-                new UIntPtr(Convert.ToUInt32(this.CurrentGuardConditions.Capacity)),
-                UIntPtr.Zero,
-                new UIntPtr(Convert.ToUInt32(this.CurrentClients.Capacity)),
-                new UIntPtr(Convert.ToUInt32(this.CurrentServices.Capacity)),
-                UIntPtr.Zero,
-                context.Handle,
-                NativeRcl.rcutils_get_default_allocator()
-            );
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_OK)
-            {
-                this.FreeHandles();
-                Utils.CheckReturnEnum(ret);
-            }
+            ros2cs_native_init_wait_set(this.ROSContext.Handle, out this.Handle).Throw();
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_init_wait_set(IntPtr context, out IntPtr waitSet);
 
         /// <inheritdoc />
         public IEnumerator<IWaitable> GetEnumerator()
@@ -169,21 +173,30 @@ namespace ROS2
         /// </remarks>
         private void PrepareWaitSet()
         {
-            int ret = NativeRcl.rcl_wait_set_resize(
-                this.Handle,
-                new UIntPtr(Convert.ToUInt32(this.CurrentSubscriptions.Count)),
-                new UIntPtr(Convert.ToUInt32(this.CurrentGuardConditions.Count)),
-                UIntPtr.Zero,
-                new UIntPtr(Convert.ToUInt32(this.CurrentClients.Count)),
-                new UIntPtr(Convert.ToUInt32(this.CurrentServices.Count)),
-                UIntPtr.Zero
-            );
-            if ((RCLReturnEnum)ret == RCLReturnEnum.RCL_RET_INVALID_ARGUMENT)
+            try
             {
-                throw new ObjectDisposedException("RCL wait set");
+                rcl_wait_set_resize(
+                    this.Handle,
+                    new UIntPtr(Convert.ToUInt32(this.CurrentSubscriptions.Count)),
+                    new UIntPtr(Convert.ToUInt32(this.CurrentGuardConditions.Count)),
+                    UIntPtr.Zero,
+                    new UIntPtr(Convert.ToUInt32(this.CurrentClients.Count)),
+                    new UIntPtr(Convert.ToUInt32(this.CurrentServices.Count)),
+                    UIntPtr.Zero
+                ).Throw();
             }
-            Utils.CheckReturnEnum(ret);
+            catch (RclError e) when (e.Code == RclReturnCode.RCL_RET_INVALID_ARGUMENT)
+            {
+                throw new ObjectDisposedException("rcl wait set has been disposed", e);
+            }
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_resize(IntPtr waitSet, UIntPtr subscriptions, UIntPtr guard_conditions, UIntPtr timers, UIntPtr clients, UIntPtr services, UIntPtr events);
 
         /// <summary>
         /// Check if the wait set contains something at an index.
@@ -192,7 +205,7 @@ namespace ROS2
         /// <param name="index">Index to check</param>
         /// <returns>Whether the wait set already contains a resource</returns>
         /// <exception cref="IndexOutOfRangeException">The wait set does not contain the index</exception>
-        private bool IsAdded(NativeRclInterface.WaitSetGetType getter, int index)
+        private bool IsAdded(Getter getter, int index)
         {
             if (getter(this.Handle, new UIntPtr(Convert.ToUInt32(index)), out IntPtr ptr))
             {
@@ -211,7 +224,7 @@ namespace ROS2
         /// <param name="adder">Delegate used for adding to the wait set</param>
         /// <param name="getter">Delegate used for accessing the wait set</param>
         /// <param name="wrappers">Resources to add</param>
-        private void FillWaitSet<T>(NativeRcl.WaitSetAddType adder, NativeRclInterface.WaitSetGetType getter, IList<T> wrappers)
+        private void FillWaitSet<T>(Adder adder, Getter getter, IList<T> wrappers)
             where T : IWaitable
         {
             if (wrappers.Count == 0)
@@ -223,7 +236,7 @@ namespace ROS2
             // add index to wait set until it is filled
             while (true)
             {
-                Utils.CheckReturnEnum(adder(this.Handle, wrappers[index].Handle, out UIntPtr destination));
+                adder(this.Handle, wrappers[index].Handle, out UIntPtr destination).Throw();
                 filled += 1;
                 int newIndex = Convert.ToInt32(destination.ToUInt32());
                 if (newIndex != index)
@@ -258,26 +271,82 @@ namespace ROS2
         {
             this.PrepareWaitSet();
             this.FillWaitSet(
-                NativeRcl.rcl_wait_set_add_subscription,
-                NativeRclInterface.rclcs_wait_set_get_subscription,
+                rcl_wait_set_add_subscription,
+                ros2cs_native_wait_set_get_subscription,
                 this.CurrentSubscriptions
             );
             this.FillWaitSet(
-                NativeRcl.rcl_wait_set_add_client,
-                NativeRclInterface.rclcs_wait_set_get_client,
+                rcl_wait_set_add_client,
+                ros2cs_native_wait_set_get_client,
                 this.CurrentClients
             );
             this.FillWaitSet(
-                NativeRcl.rcl_wait_set_add_service,
-                NativeRclInterface.rclcs_wait_set_get_service,
+                rcl_wait_set_add_service,
+                ros2cs_native_wait_set_get_service,
                 this.CurrentServices
             );
             this.FillWaitSet(
-                NativeRcl.rcl_wait_set_add_guard_condition,
-                NativeRclInterface.rclcs_wait_set_get_guard_condition,
+                rcl_wait_set_add_guard_condition,
+                ros2cs_native_wait_set_get_guard_condition,
                 this.CurrentGuardConditions
             );
         }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_wait_set_get_subscription(IntPtr waitSet, UIntPtr index, out IntPtr subscription);
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_wait_set_get_guard_condition(IntPtr waitSet, UIntPtr index, out IntPtr guardCondition);
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_wait_set_get_client(IntPtr waitSet, UIntPtr index, out IntPtr client);
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_wait_set_get_service(IntPtr waitSet, UIntPtr index, out IntPtr service);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_add_subscription(IntPtr waitSet, IntPtr subscription, out UIntPtr index);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_add_guard_condition(IntPtr waitSet, IntPtr guardCondition, out UIntPtr index);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_add_client(IntPtr waitSet, IntPtr client, out UIntPtr index);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_add_service(IntPtr waitSet, IntPtr service, out UIntPtr index);
 
         /// <param name="timeout">Timeout for waiting, infinite if negative</param>
         /// <param name="result">The resources that became ready</param>
@@ -291,17 +360,24 @@ namespace ROS2
             this.FillWaitSet();
 
             long nanoSeconds = timeout.Ticks * (1_000_000_000 / TimeSpan.TicksPerSecond);
-            int ret = NativeRcl.rcl_wait(this.Handle, nanoSeconds);
-            if ((RCLReturnEnum)ret == RCLReturnEnum.RCL_RET_TIMEOUT)
+            RclReturnCode ret = rcl_wait(this.Handle, nanoSeconds);
+            if (ret == RclReturnCode.RCL_RET_TIMEOUT)
             {
                 result = default(WaitResult);
                 return false;
             }
-            Utils.CheckReturnEnum(ret);
+            ret.Throw();
 
             result = new WaitResult(this);
             return true;
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait(IntPtr waitSet, long timeout);
 
         /// <inheritdoc />
         public void Dispose()
@@ -326,9 +402,16 @@ namespace ROS2
                 this.ClearCollections();
             }
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_wait_set_fini(this.Handle));
+            rcl_wait_set_fini(this.Handle).Throw();
             this.FreeHandles();
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_wait_set_fini(IntPtr waitSet);
 
         /// <summary> Dispose without modifying the context. </summary>
         internal void DisposeFromContext()
@@ -340,7 +423,7 @@ namespace ROS2
 
             this.ClearCollections();
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_wait_set_fini(this.Handle));
+            rcl_wait_set_fini(this.Handle).Throw();
             this.FreeHandles();
         }
 
@@ -354,9 +437,15 @@ namespace ROS2
 
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_wait_set(this.Handle);
+            ros2cs_native_free_wait_set(this.Handle);
             this.Handle = IntPtr.Zero;
         }
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ros2cs_native_free_wait_set(IntPtr waitSet);
 
         ~WaitSet()
         {
@@ -379,7 +468,7 @@ namespace ROS2
             public IEnumerable<ISubscriptionBase> ReadySubscriptions
             {
                 get => this.CurrentPrimitives(
-                    NativeRclInterface.rclcs_wait_set_get_subscription,
+                    ros2cs_native_wait_set_get_subscription,
                     this.WaitSet.CurrentSubscriptions
                 );
             }
@@ -390,7 +479,7 @@ namespace ROS2
             public IEnumerable<IClientBase> ReadyClients
             {
                 get => this.CurrentPrimitives(
-                    NativeRclInterface.rclcs_wait_set_get_client,
+                    ros2cs_native_wait_set_get_client,
                     this.WaitSet.CurrentClients
                 );
             }
@@ -401,7 +490,7 @@ namespace ROS2
             public IEnumerable<IServiceBase> ReadyServices
             {
                 get => this.CurrentPrimitives(
-                    NativeRclInterface.rclcs_wait_set_get_service,
+                    ros2cs_native_wait_set_get_service,
                     this.WaitSet.CurrentServices
                 );
             }
@@ -412,7 +501,7 @@ namespace ROS2
             public IEnumerable<GuardCondition> ReadyGuardConditions
             {
                 get => this.CurrentPrimitives(
-                    NativeRclInterface.rclcs_wait_set_get_guard_condition,
+                    ros2cs_native_wait_set_get_guard_condition,
                     this.WaitSet.CurrentGuardConditions
                 );
             }
@@ -456,7 +545,7 @@ namespace ROS2
             /// <param name="getter"> Function to access the wait set array. </param>
             /// <param name="primitives"> List holding the primitives. </param>
             /// <returns>Enumerable of the primitives. </returns>
-            private IEnumerable<T> CurrentPrimitives<T>(NativeRclInterface.WaitSetGetType getter, IList<T> primitives) where T : IWaitable
+            private IEnumerable<T> CurrentPrimitives<T>(Getter getter, IList<T> primitives) where T : IWaitable
             {
                 this.AssertOk();
                 for (UIntPtr index = UIntPtr.Zero; getter(this.WaitSet.Handle, index, out IntPtr ptr); index += 1)
@@ -464,6 +553,7 @@ namespace ROS2
                     if (ptr != IntPtr.Zero)
                     {
                         yield return primitives[Convert.ToInt32(index.ToUInt32())];
+                        // wait set might have been disposed
                         this.AssertOk();
                     }
                 }
