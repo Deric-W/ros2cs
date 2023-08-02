@@ -22,8 +22,6 @@ namespace Examples
     /// <summary> A talker class meant to gauge performance of Ros2cs </summary>
     public class ROS2PerformanceTalker
     {
-        private static Clock clock = new Clock();
-
         private static void AssignField(ref PointField pf, string n, uint off, byte dt, uint count)
         {
             pf.Name = n;
@@ -87,10 +85,12 @@ namespace Examples
             Console.WriteLine("Enter PC2 data size: ");
             sensor_msgs.msg.PointCloud2 msg = PrepMessage(Convert.ToInt32(Console.ReadLine()));
 
+            using Clock clock = new Clock();
+
             while (context.Ok())
             {
                 var nowTime = clock.Now;
-                msg.UpdateHeaderTime(nowTime.sec, nowTime.nanosec);
+                msg.UpdateHeaderTime((int)nowTime.Seconds, nowTime.Nanoseconds);
 
                 // Remove this benchmark if you want to measure maximum throughput for smallest messages
                 using (var bench = new Benchmark("Publish"))

@@ -97,17 +97,13 @@ namespace Examples
             Console.WriteLine("Waiting for {0} messages...", sampleSize);
             FixedSizedQueue queue = new FixedSizedQueue(sampleSize);
 
-            RosTime timeStamp = new RosTime();
             int counter = 0;
 
             ISubscription<PointCloud2> chatter_sub = node.CreateSubscription<PointCloud2>(
                 "perf_chatter",
                 msg =>
                 {
-                    RosTime timeNow = clock.Now;
-                    timeStamp.nanosec = msg.Header.Stamp.Nanosec;
-                    timeStamp.sec = msg.Header.Stamp.Sec;
-                    var diff = timeNow.Seconds - timeStamp.Seconds;
+                    var diff = clock.Now.Seconds - new RosTime(msg.Header.Stamp.Sec, msg.Header.Stamp.Nanosec).TotalSeconds;
 
                     queue.Enqueue(diff);
                     counter++;

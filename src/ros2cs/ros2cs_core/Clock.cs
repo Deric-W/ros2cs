@@ -14,65 +14,131 @@
 // limitations under the License.
 
 using System;
-using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using ROS2.Native;
 
 namespace ROS2
 {
-  /// <summary> A simple structure to hold seconds and nanoseconds </summary>
-  /// <description> This is meant to be an intermediate data object before time is packed into
-  /// a rosgraph clock message or into a different format native to application layer </description>
-  public struct RosTime
-  {
-    public int sec;
-    public uint nanosec;
-
-    public double Seconds
+    /// <summary> A simple structure to hold seconds and nanoseconds </summary>
+    /// <description> This is meant to be an intermediate data object before time is packed into
+    /// a rosgraph clock message or into a different format native to application layer </description>
+    public readonly struct RosTime
     {
-      get { return sec + nanosec/1e9; }
-    }
-  }
+        public readonly long Seconds;
 
-  /// <summary> A clock class which queries an internal rcl clock and exposes RosTime </summary>
-  public class Clock : IExtendedDisposable
-  {
-    internal IntPtr handle;
-    private bool disposed;
+        public readonly uint Nanoseconds;
 
-    public bool IsDisposed { get { return disposed; } }
+        public double TotalSeconds
+        {
+            get => this.Seconds + this.Nanoseconds / 1e9;
+        }
 
-    /// <summary> Query current time </summary>
-    /// <returns> Time in full seconds and nanoseconds </returns>
-    public RosTime Now
-    {
-      get
-      {
-        RosTime time = new RosTime();
-        long queryNowNanoseconds = 0;
-        NativeRcl.rcl_clock_get_now(handle, out queryNowNanoseconds);
-        time.sec = (int)(queryNowNanoseconds / (long)1e9);
-        time.nanosec = (uint)(queryNowNanoseconds - time.sec*((long)1e9));
-        return time;
-      }
+        public RosTime(long sec, uint nanosec)
+        {
+            this.Seconds = sec;
+            this.Nanoseconds = nanosec;
+        }
     }
 
-    public Clock()
+    /// <summary> A clock class which queries an internal rcl clock and exposes RosTime </summary>
+    public class Clock : IExtendedDisposable
     {
-      rcl_allocator_t allocator = NativeRcl.rcutils_get_default_allocator();
-      handle = NativeRclInterface.rclcs_ros_clock_create(ref allocator);
-    }
+        private const uint NANOS_PER_SECOND = 1_000_000_000;
 
-    ~Clock()
-    {
-      Dispose();
-    }
+        public bool IsDisposed
+        {
+            get
+            {
+                bool ok = ros2cs_native_clock_valid(this.Handle);
+                GC.KeepAlive(this);
+                return !ok;
+            }
+        }
 
-    public void Dispose()
-    {
-      if (!disposed)
-      {
-        NativeRclInterface.rclcs_ros_clock_dispose(handle);
-        disposed = true;
-      }
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_clock_valid(IntPtr clock);
+
+        /// <summary> Query current time </summary>
+        /// <returns> Time in full seconds and nanoseconds </returns>
+        public RosTime Now
+        {
+            get
+            {
+                long nanoseconds;
+                try
+                {
+                    rcl_clock_get_now(Handle, out nanoseconds).Throw();
+                    GC.KeepAlive(this);
+                }
+                catch (RclError e) when (e.Code == RclReturnCode.RCL_RET_INVALID_ARGUMENT)
+                {
+                    throw new ObjectDisposedException("rcl clock has been disposed", e);
+                }
+                long seconds = nanoseconds / NANOS_PER_SECOND;
+                uint nanos = (uint)(nanoseconds - seconds * NANOS_PER_SECOND);
+                return new RosTime(seconds, nanos);
+            }
+        }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_clock_get_now(IntPtr clock, out long nanoseconds);
+
+        internal IntPtr Handle { get; private set; } = IntPtr.Zero;
+
+        public Clock()
+        {
+            ros2cs_native_clock_init(out IntPtr handle).Throw();
+            this.Handle = handle;
+        }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_clock_init(out IntPtr clock);
+
+        public void Dispose()
+        {
+            this.Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (this.Handle == IntPtr.Zero)
+            {
+                return;
+            }
+            rcl_clock_fini(this.Handle).Throw();
+            ros2cs_native_free_clock(this.Handle);
+            this.Handle = IntPtr.Zero;
+        }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_clock_fini(IntPtr clock);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ros2cs_native_free_clock(IntPtr clock);
+
+        ~Clock()
+        {
+            this.Dispose(false);
+        }
     }
-  }
 }

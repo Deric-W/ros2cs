@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using NUnit.Framework;
 
 namespace ROS2.Test
@@ -20,30 +21,57 @@ namespace ROS2.Test
     [TestFixture]
     public class ClockTest
     {
-        [Test]
-        public void CreateClock()
+        private Clock Clock;
+
+        [SetUp]
+        public void SetUp()
         {
-            Clock clock = new Clock();
+            this.Clock = new Clock();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            this.Clock.Dispose();
+        }
+
+        [Test]
+        public void IsDisposed()
+        {
+            Assert.That(this.Clock.IsDisposed, Is.False);
+
+            this.Clock.Dispose();
+
+            Assert.That(this.Clock.IsDisposed, Is.True);
+        }
+
+        [Test]
+        public void DoubleDisposal()
+        {
+            this.Clock.Dispose();
+            this.Clock.Dispose();
+
+            Assert.That(this.Clock.IsDisposed, Is.True);
         }
 
         [Test]
         public void ClockGetNow()
         {
-            Clock clock = new Clock();
-            RosTime timeNow = clock.Now;
-            Assert.That(timeNow.sec, Is.Not.EqualTo(0));
+            Assert.That(this.Clock.Now.Seconds, Is.Not.EqualTo(0));
+
+            this.Clock.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => { _ = this.Clock.Now; });
         }
 
         [Test]
         public void RosTimeSeconds()
         {
-            Clock clock = new Clock();
+            RosTime oneSecond = new RosTime(1, 0);
+            Assert.That(oneSecond.TotalSeconds, Is.EqualTo(1.0d));
 
-            RosTime oneSecond = new RosTime { sec = 1, nanosec = 0 };
-            Assert.That(oneSecond.Seconds, Is.EqualTo(1.0d));
-
-            RosTime twoPointSix = new RosTime { sec = 2, nanosec = 600000000 };
-            Assert.That(twoPointSix.Seconds, Is.EqualTo(2.6d));
+            RosTime twoPointSix = new RosTime(2, 600000000);
+            Assert.That(twoPointSix.TotalSeconds, Is.EqualTo(2.6d));
         }
     }
 }

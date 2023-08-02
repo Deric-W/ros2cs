@@ -69,6 +69,7 @@ add_library(
   native/service.c
   native/subscription.c
   native/wait_set.c
+  native/clock.c
 )
 
 ament_target_dependencies(ros2cs_native
