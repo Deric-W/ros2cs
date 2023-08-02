@@ -63,6 +63,7 @@ add_library(
   native/error_handling.c
   native/guard_condition.c
   native/node.c
+  native/publisher.c
 )
 
 ament_target_dependencies(ros2cs_native

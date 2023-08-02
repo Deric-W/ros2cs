@@ -14,7 +14,9 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using ROS2.Internal;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -37,7 +39,7 @@ namespace ROS2
         {
             get
             {
-                bool ok = NativeRclInterface.rclcs_publisher_is_valid(this.Handle);
+                bool ok = NativePublisherMethods.ros2cs_native_publisher_valid(this.Handle);
                 GC.KeepAlive(this);
                 return !ok;
             }
@@ -75,26 +77,24 @@ namespace ROS2
             this.Node = node;
 
             QualityOfServiceProfile qualityOfServiceProfile = qos ?? new QualityOfServiceProfile();
-
-            this.Options = NativeRclInterface.rclcs_publisher_create_options(qualityOfServiceProfile.handle);
-
             IntPtr typeSupportHandle = MessageTypeSupportHelper.GetTypeSupportHandle<T>();
 
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_publisher();
-            int ret = NativeRcl.rcl_publisher_init(
-              this.Handle,
-              this.Node.Handle,
-              typeSupportHandle,
-              this.Topic,
-              this.Options
+            (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
+                (out IntPtr options) => NativePublisherMethods.ros2cs_native_init_publisher_options(
+                    qualityOfServiceProfile.handle,
+                    out options
+                ),
+                (IntPtr options, out IntPtr handle) => NativePublisherMethods.ros2cs_native_init_publisher(
+                    this.Node.Handle,
+                    typeSupportHandle,
+                    this.Topic.ToRcl(),
+                    options,
+                    out handle
+                ),
+                options => { NativePublisherMethods.ros2cs_native_dispose_publisher_options(options); return RclReturnCode.RCL_RET_OK; }
             );
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_OK)
-            {
-                this.FreeHandles();
-                Utils.CheckReturnEnum(ret);
-            }
+            GC.KeepAlive(qualityOfServiceProfile);
         }
-
 
         ///<remarks>
         /// Message memory is copied into native structures and
@@ -110,7 +110,7 @@ namespace ROS2
             // may not be thread safe
             msgInternals.WriteNativeMessage();
             // confused by the rcl documentation, assume it is not thread safe
-            Utils.CheckReturnEnum(NativeRcl.rcl_publish(this.Handle, msgInternals.Handle, IntPtr.Zero));
+            NativePublisherMethods.rcl_publish(this.Handle, msgInternals.Handle, IntPtr.Zero).Throw();
             GC.KeepAlive(this);
         }
 
@@ -154,7 +154,7 @@ namespace ROS2
                 return;
             }
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_publisher_fini(this.Handle, this.Node.Handle));
+            NativePublisherMethods.rcl_publisher_fini(this.Handle, this.Node.Handle).Throw();
             this.FreeHandles();
         }
 
@@ -166,9 +166,9 @@ namespace ROS2
         /// </remarks>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_publisher(this.Handle);
+            NativePublisherMethods.ros2cs_native_free_publisher(this.Handle);
             this.Handle = IntPtr.Zero;
-            NativeRclInterface.rclcs_publisher_dispose_options(this.Options);
+            NativePublisherMethods.ros2cs_native_dispose_publisher_options(this.Options);
             this.Options = IntPtr.Zero;
         }
 
@@ -176,5 +176,55 @@ namespace ROS2
         {
             this.Dispose(false);
         }
+    }
+
+    internal static class NativePublisherMethods
+    {
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern bool ros2cs_native_publisher_valid(IntPtr publisher);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_publisher_options(IntPtr qos, out IntPtr options);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void ros2cs_native_dispose_publisher_options(IntPtr options);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_publisher(IntPtr node, IntPtr typeSupport, [In] byte[] topic, IntPtr options, out IntPtr publisher);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void ros2cs_native_free_publisher(IntPtr publisher);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_publish(IntPtr publisher, IntPtr msg, IntPtr allocation);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_publisher_fini(IntPtr publisher, IntPtr node);
     }
 }
