@@ -53,7 +53,7 @@ namespace ROS2
   }
 
   [StructLayout(LayoutKind.Sequential)]
-  public struct rcl_rmw_request_id_t
+  public struct rmw_request_id_t
   {
     /// The guid of the writer associated with this request
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]

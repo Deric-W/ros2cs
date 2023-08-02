@@ -59,6 +59,7 @@ add_library(
   ros2cs_native SHARED
   native/rcl_native_interface.c
   native/rmw_native_interface.c
+  native/error_handling.c
 )
 
 ament_target_dependencies(ros2cs_native
@@ -90,6 +91,9 @@ set(CS_NATIVE
   native/NativeRclInterface.cs
   native/NativeRmwInterface.cs
   native/NativeTypes.cs
+  native/RclError.cs
+  native/RclReturnCode.cs
+  native/InteropUtils.cs
 )
 
 set(CS_UTILS
