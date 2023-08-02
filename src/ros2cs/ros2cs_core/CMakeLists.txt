@@ -64,6 +64,7 @@ add_library(
   native/guard_condition.c
   native/node.c
   native/publisher.c
+  native/subscription.c
 )
 
 ament_target_dependencies(ros2cs_native

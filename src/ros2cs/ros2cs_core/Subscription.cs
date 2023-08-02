@@ -14,7 +14,9 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using ROS2.Internal;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -37,7 +39,7 @@ namespace ROS2
         {
             get
             {
-                bool ok = NativeRclInterface.rclcs_subscription_is_valid(this.Handle);
+                bool ok = NativeSubscriptionMethods.ros2cs_native_subscription_valid(this.Handle);
                 GC.KeepAlive(this);
                 return !ok;
             }
@@ -82,24 +84,23 @@ namespace ROS2
             this.Callback = callback;
 
             QualityOfServiceProfile qualityOfServiceProfile = qos ?? new QualityOfServiceProfile();
-
-            this.Options = NativeRclInterface.rclcs_subscription_create_options(qualityOfServiceProfile.handle);
-
             IntPtr typeSupportHandle = MessageTypeSupportHelper.GetTypeSupportHandle<T>();
 
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_subscription();
-            int ret = NativeRcl.rcl_subscription_init(
-                this.Handle,
-                this.Node.Handle,
-                typeSupportHandle,
-                this.Topic,
-                this.Options
+            (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
+                (out IntPtr options) => NativeSubscriptionMethods.ros2cs_native_init_subscription_options(
+                    qualityOfServiceProfile.handle,
+                    out options
+                ),
+                (IntPtr options, out IntPtr handle) => NativeSubscriptionMethods.ros2cs_native_init_subscription(
+                    this.Node.Handle,
+                    typeSupportHandle,
+                    this.Topic.ToRcl(),
+                    options,
+                    out handle
+                ),
+                NativeSubscriptionMethods.ros2cs_native_dispose_subscription_options
             );
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_OK)
-            {
-                this.FreeHandles();
-                Utils.CheckReturnEnum(ret);
-            }
+            GC.KeepAlive(qualityOfServiceProfile);
         }
 
         /// <remarks>
@@ -109,7 +110,7 @@ namespace ROS2
         public bool TryProcess()
         {
             T message = new T();
-            int ret = NativeRcl.rcl_take(
+            RclReturnCode ret = NativeSubscriptionMethods.rcl_take(
                 this.Handle,
                 (message as MessageInternals).Handle,
                 IntPtr.Zero,
@@ -117,13 +118,13 @@ namespace ROS2
             );
             GC.KeepAlive(this);
 
-            switch ((RCLReturnEnum)ret)
+            switch (ret)
             {
-                case RCLReturnEnum.RCL_RET_SUBSCRIPTION_TAKE_FAILED:
-                case RCLReturnEnum.RCL_RET_SUBSCRIPTION_INVALID:
+                case RclReturnCode.RCL_RET_SUBSCRIPTION_TAKE_FAILED:
+                case RclReturnCode.RCL_RET_SUBSCRIPTION_INVALID:
                     return false;
                 default:
-                    Utils.CheckReturnEnum(ret);
+                    ret.Throw();
                     break;
             }
 
@@ -173,7 +174,7 @@ namespace ROS2
                 return;
             }
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_subscription_fini(this.Handle, this.Node.Handle));
+            NativeSubscriptionMethods.rcl_subscription_fini(this.Handle, this.Node.Handle).Throw();
             this.FreeHandles();
         }
 
@@ -185,9 +186,9 @@ namespace ROS2
         /// </remarks>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_subscription(this.Handle);
+            NativeSubscriptionMethods.ros2cs_native_free_subscription(this.Handle);
             this.Handle = IntPtr.Zero;
-            NativeRclInterface.rclcs_subscription_dispose_options(this.Options);
+            NativeSubscriptionMethods.ros2cs_native_dispose_subscription_options(this.Options).Throw();
             this.Options = IntPtr.Zero;
         }
 
@@ -195,5 +196,56 @@ namespace ROS2
         {
             this.Dispose(false);
         }
+    }
+
+    internal static class NativeSubscriptionMethods
+    {
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern bool ros2cs_native_subscription_valid(IntPtr subscription);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_subscription_options(IntPtr qos, out IntPtr options);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_dispose_subscription_options(IntPtr options);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode ros2cs_native_init_subscription(IntPtr node, IntPtr typeSupport, [In] byte[] topic, IntPtr options, out IntPtr subscription);
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern void ros2cs_native_free_subscription(IntPtr subscription);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_take(IntPtr subscription, IntPtr msg, IntPtr msgInfo, IntPtr allocation);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        internal static extern RclReturnCode rcl_subscription_fini(IntPtr subscription, IntPtr node);
     }
 }
