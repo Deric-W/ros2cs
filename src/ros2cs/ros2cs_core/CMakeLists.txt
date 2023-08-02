@@ -62,6 +62,7 @@ add_library(
   native/context.c
   native/error_handling.c
   native/guard_condition.c
+  native/node.c
 )
 
 ament_target_dependencies(ros2cs_native

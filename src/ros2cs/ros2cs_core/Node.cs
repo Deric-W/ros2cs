@@ -15,6 +15,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -29,6 +31,8 @@ namespace ROS2
     /// <inheritdoc cref="INode"/>
     public sealed class Node : INode
     {
+        private static readonly byte[] DEFAULT_NAMESPACE = "/".ToRcl();
+
         /// <inheritdoc/>
         public string Name { get; private set; }
 
@@ -61,8 +65,15 @@ namespace ROS2
         /// <inheritdoc/>
         public bool IsDisposed
         {
-            get { return !NativeRclInterface.rclcs_node_is_valid(this.Handle); }
+            get { return !ros2cs_native_node_valid(this.Handle); }
         }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_node_valid(IntPtr node);
 
         /// <summary>
         /// Handle to the rcl node
@@ -135,30 +146,47 @@ namespace ROS2
             this.Services = new LockedCollection<IServiceBase>(this.CurrentServices, this.Lock);
             this.Clients = new LockedCollection<IClientBase>(this.CurrentClients, this.Lock);
 
-            this.Options = NativeRclInterface.rclcs_node_create_default_options();
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_node();
-            int ret = NativeRcl.rcl_node_init(
-              this.Handle,
-              this.Name,
-              "/",
-              this.ROSContext.Handle,
-              this.Options
-
-            );
-            switch ((RCLReturnEnum)ret)
+            try
             {
-                case RCLReturnEnum.RCL_RET_OK:
-                    break;
+                (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
+                    ros2cs_native_init_node_options,
+                    (IntPtr options, out IntPtr handle) => ros2cs_native_init_node(
+                        this.Name.ToRcl(),
+                        DEFAULT_NAMESPACE,
+                        this.ROSContext.Handle,
+                        options,
+                        out handle
+                    ),
+                ros2cs_native_dispose_node_options 
+                );
+            }
+            catch (RclError e) when (e.Code == RclReturnCode.RCL_RET_INVALID_ARGUMENT)
+            {
                 // does not return RCL_RET_NOT_INIT if the context is NULL
-                case RCLReturnEnum.RCL_RET_INVALID_ARGUMENT:
-                    this.FreeHandles();
-                    throw new ObjectDisposedException("RCL Context");
-                default:
-                    this.FreeHandles();
-                    Utils.CheckReturnEnum(ret);
-                    break;
+                throw new ObjectDisposedException("rcl context has been disposed", e);
             }
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_init_node_options(out IntPtr options);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_init_node(byte[] name, byte[] nspace, IntPtr context, IntPtr options, out IntPtr node);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_dispose_node_options(IntPtr options);
 
         /// <remarks>
         /// This method is thread safe.
@@ -364,9 +392,16 @@ namespace ROS2
             }
             this.CurrentClients.Clear();
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_node_fini(this.Handle));
+            rcl_node_fini(this.Handle).Throw();
             this.FreeHandles();
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            dllName: "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_node_fini(IntPtr node);
 
         /// <summary>
         /// Free the rcl handles and replace them with null pointers.
@@ -376,10 +411,16 @@ namespace ROS2
         /// </remarks>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_node(this.Handle);
+            ros2cs_native_free_node(this.Handle);
             this.Handle = IntPtr.Zero;
-            NativeRclInterface.rclcs_node_dispose_options(this.Options);
+            ros2cs_native_dispose_node_options(this.Options).Throw();
             this.Options = IntPtr.Zero;
         }
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ros2cs_native_free_node(IntPtr node);
     }
 }
