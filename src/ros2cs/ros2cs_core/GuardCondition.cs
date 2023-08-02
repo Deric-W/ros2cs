@@ -14,6 +14,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -32,11 +34,18 @@ namespace ROS2
         {
             get
             {
-                bool ok = NativeRclInterface.rclcs_guard_condition_is_valid(this.Handle);
+                bool ok = ros2cs_native_guard_condition_valid(this.Handle);
                 GC.KeepAlive(this);
                 return !ok;
             }
         }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_guard_condition_valid(IntPtr guard_condition);
 
         /// <summary>
         /// Context associated with this instance.
@@ -59,17 +68,23 @@ namespace ROS2
         {
             this.Context = context;
             this.Callback = callback;
-            int ret = NativeRclInterface.rclcs_get_guard_condition(
-                context.Handle,
-                out IntPtr handle
-            );
-            if ((RCLReturnEnum)ret == RCLReturnEnum.RCL_RET_INVALID_ARGUMENT)
+            try
             {
-                throw new ObjectDisposedException("rcl context");
+                ros2cs_native_init_guard_condition(context.Handle, out IntPtr handle).Throw();
+                this.Handle = handle;
             }
-            Utils.CheckReturnEnum(ret);
-            this.Handle = handle;
+            catch (RclError e) when (e.Code == RclReturnCode.RCL_RET_INVALID_ARGUMENT)
+            {
+                throw new ObjectDisposedException("rcl context has been disposed", e);
+            }
         }
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_init_guard_condition(IntPtr context, out IntPtr guard_condition);
 
         /// <summary>
         /// Trigger the guard condition to make it become ready.
@@ -81,15 +96,23 @@ namespace ROS2
         /// <exception cref="ObjectDisposedException">If the guard condition was disposed.</exception>
         public void Trigger()
         {
-            int ret = NativeRcl.rcl_trigger_guard_condition(this.Handle);
-            GC.KeepAlive(this);
-
-            if ((RCLReturnEnum)ret == RCLReturnEnum.RCL_RET_INVALID_ARGUMENT)
+            try
             {
-                throw new ObjectDisposedException("rcl guard condition");
+                rcl_trigger_guard_condition(this.Handle).Throw();
             }
-            Utils.CheckReturnEnum(ret);
+            catch (RclError e) when (e.Code == RclReturnCode.RCL_RET_INVALID_ARGUMENT)
+            {
+                throw new ObjectDisposedException("rcl guard condition has been disposed", e);
+            }
+            GC.KeepAlive(this);
         }
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_trigger_guard_condition(IntPtr guard_condition);
 
         /// <remarks>
         /// This method is thread safe
@@ -141,9 +164,16 @@ namespace ROS2
                 return;
             }
 
-            Utils.CheckReturnEnum(NativeRcl.rcl_guard_condition_fini(this.Handle));
+            rcl_guard_condition_fini(this.Handle).Throw();
             this.FreeHandles();
         }
+
+        [return: MarshalAs(unmanagedType: UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_guard_condition_fini(IntPtr guard_condition);
 
         /// <summary>
         /// Free the rcl handles and replace them with null pointers.
@@ -153,9 +183,15 @@ namespace ROS2
         /// </remarks>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_guard_condition(this.Handle);
+            ros2cs_native_free_guard_condition(this.Handle);
             this.Handle = IntPtr.Zero;
         }
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ros2cs_native_free_guard_condition(IntPtr guard_condition);
 
         ~GuardCondition()
         {

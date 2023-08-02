@@ -61,6 +61,7 @@ add_library(
   native/rmw_native_interface.c
   native/context.c
   native/error_handling.c
+  native/guard_condition.c
 )
 
 ament_target_dependencies(ros2cs_native
