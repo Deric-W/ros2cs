@@ -65,6 +65,7 @@ add_library(
   native/guard_condition.c
   native/node.c
   native/publisher.c
+  native/service.c
   native/subscription.c
 )
 
