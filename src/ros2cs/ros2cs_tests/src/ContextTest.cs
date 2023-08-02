@@ -36,6 +36,12 @@ namespace ROS2.Test
         }
 
         [Test]
+        public static void ContextRmwImplementation()
+        {
+            Assert.That(Context.GetRMWImplementation(), Is.Not.Null);
+        }
+
+        [Test]
         public void ContextOk()
         {
             Assert.That(Context.Ok());

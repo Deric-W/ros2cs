@@ -14,6 +14,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using ROS2.Native;
 
 namespace ROS2
 {
@@ -74,8 +76,14 @@ namespace ROS2
         /// <returns>The current implementation as string.</returns>
         public static string GetRMWImplementation()
         {
-            return Utils.PtrToString(NativeRmwInterface.rmw_native_interface_get_implementation_identifier());
+            return Marshal.PtrToStringAnsi(ros2cs_native_rmw_implementation_identifier());
         }
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr ros2cs_native_rmw_implementation_identifier();
 
         /// <summary>
         /// Create a new ROS Context.
@@ -86,14 +94,16 @@ namespace ROS2
                 new LockedDictionary<string, Node>(this.ROSNodes),
                 node => node
             );
-            this.Handle = NativeRclInterface.rclcs_get_zero_initialized_context();
-            int ret = NativeRclInterface.rclcs_init(this.Handle, NativeRcl.rcutils_get_default_allocator());
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_OK)
-            {
-                this.FreeHandles();
-                Utils.CheckReturnEnum(ret);
-            }
+            ros2cs_native_init_context(out IntPtr handle).Throw();
+            this.Handle = handle;
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode ros2cs_native_init_context(out IntPtr context);
 
         /// <inheritdoc/>
         /// <remarks>
@@ -101,8 +111,15 @@ namespace ROS2
         /// </remarks>
         public bool Ok()
         {
-            return NativeRclInterface.rclcs_context_is_valid(this.Handle);
+            return ros2cs_native_context_valid(this.Handle);
         }
+
+        [return: MarshalAs(UnmanagedType.U1)]
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool ros2cs_native_context_valid(IntPtr context);
 
         /// <inheritdoc/>
         /// <remarks>
@@ -234,10 +251,10 @@ namespace ROS2
             {
                 return;
             }
-            int ret = NativeRcl.rcl_shutdown(this.Handle);
-            if ((RCLReturnEnum)ret != RCLReturnEnum.RCL_RET_ALREADY_SHUTDOWN)
+            RclReturnCode ret = rcl_shutdown(this.Handle);
+            if (ret != RclReturnCode.RCL_RET_ALREADY_SHUTDOWN)
             {
-                Utils.CheckReturnEnum(ret);
+                ret.Throw();
             }
             // only continue if the collections of the active primitives have not been finalized
             if (disposing)
@@ -259,20 +276,40 @@ namespace ROS2
                 }
                 this.WaitSets.Clear();
                 // only safe when all primitives are gone, not calling Dispose() will leak the Handle
-                Utils.CheckReturnEnum(NativeRcl.rcl_context_fini(this.Handle));
+                rcl_context_fini(this.Handle).Throw();
                 this.FreeHandles();
             }
         }
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_shutdown(IntPtr context);
+
+        [return: MarshalAs(UnmanagedType.I4)]
+        [DllImport(
+            "rcl",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern RclReturnCode rcl_context_fini(IntPtr context);
 
         /// <summary>
         /// Free the handles of this instance.
         /// </summary>
         private void FreeHandles()
         {
-            NativeRclInterface.rclcs_free_context(this.Handle);
+            ros2cs_native_free_context(this.Handle);
             // to allow .IsDisposed to work
             this.Handle = IntPtr.Zero;
         }
+
+        [DllImport(
+            "ros2cs_native",
+            ExactSpelling = true,
+            CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ros2cs_native_free_context(IntPtr context);
 
         ~Context()
         {

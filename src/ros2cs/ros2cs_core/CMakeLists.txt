@@ -59,6 +59,7 @@ add_library(
   ros2cs_native SHARED
   native/rcl_native_interface.c
   native/rmw_native_interface.c
+  native/context.c
   native/error_handling.c
 )
 
