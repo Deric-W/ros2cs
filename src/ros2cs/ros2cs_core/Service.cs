@@ -90,7 +90,7 @@ namespace ROS2
 
             (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
                 (out IntPtr options) => NativeServiceMethods.ros2cs_native_init_service_options(
-                    qualityOfServiceProfile.handle,
+                    qualityOfServiceProfile.Handle,
                     out options
                 ),
                 (IntPtr options, out IntPtr handle) => NativeServiceMethods.ros2cs_native_init_service(

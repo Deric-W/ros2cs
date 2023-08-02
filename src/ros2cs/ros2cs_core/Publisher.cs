@@ -81,7 +81,7 @@ namespace ROS2
 
             (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
                 (out IntPtr options) => NativePublisherMethods.ros2cs_native_init_publisher_options(
-                    qualityOfServiceProfile.handle,
+                    qualityOfServiceProfile.Handle,
                     out options
                 ),
                 (IntPtr options, out IntPtr handle) => NativePublisherMethods.ros2cs_native_init_publisher(

@@ -88,7 +88,7 @@ namespace ROS2
 
             (this.Options, this.Handle) = InteropUtils.CreateHandleWithOptions(
                 (out IntPtr options) => NativeSubscriptionMethods.ros2cs_native_init_subscription_options(
-                    qualityOfServiceProfile.handle,
+                    qualityOfServiceProfile.Handle,
                     out options
                 ),
                 (IntPtr options, out IntPtr handle) => NativeSubscriptionMethods.ros2cs_native_init_subscription(

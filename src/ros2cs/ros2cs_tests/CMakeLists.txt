@@ -57,6 +57,7 @@ if(BUILD_TESTING)
     src/GuardConditionTest.cs
     src/ManualExecutorTest.cs
     src/TaskExecutorTest.cs
+    src/QualityOfServiceProfileTest.cs
   )
 
   add_dotnet_test(ros2cs_tests
