@@ -45,7 +45,6 @@ namespace @(ns)
 public class @(message_class) : @(internals_interface), @(parent_interface)
 {
   private IntPtr _handle;
-  private static readonly DllLoadUtils dllLoadUtils;
 
   public bool IsDisposed { get { return disposed; } }
   private bool disposed;
@@ -54,6 +53,8 @@ public class @(message_class) : @(internals_interface), @(parent_interface)
 @[for constant in message.constants]@
   public const @(get_dotnet_type(constant.type)) @(constant.name) = @(constant_value_to_dotnet(constant.type, constant.value));
 @[end for]@
+
+  private const string NATIVE_LIBRARY = "@(package_name)_@(message_class_lower)__rosidl_typesupport_c_native";
 
   // members
 @[for member in message.structure.members]@
@@ -85,198 +86,136 @@ public class @(message_class) : @(internals_interface), @(parent_interface)
 @[  end if]@
 @[end for]@
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate IntPtr NativeGetTypeSupportType();
-  private static NativeGetTypeSupportType native_get_typesupport = null;
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_get_type_support")]
+  private static extern IntPtr native_get_typesupport();
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate IntPtr NativeCreateNativeMessageType();
-  private static NativeCreateNativeMessageType native_create_native_message = null;
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_create_native_message")]
+  private static extern IntPtr native_create_native_message();
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate void NativeDestroyNativeMessageType(IntPtr messageHandle);
-  private static NativeDestroyNativeMessageType native_destroy_native_message = null;
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_destroy_native_message")]
+  private static extern void native_destroy_native_message(IntPtr messageHandle);
 
 @[for member in message.structure.members]@
 @[  if isinstance(member.type, BasicType)]@
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate @(get_dotnet_type(member.type)) NativeReadField@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle);
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_read_field_@(member.name)")]
+  private static extern @(get_dotnet_type(member.type)) native_read_field_@(member.name)(IntPtr messageHandle);
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate void NativeWriteField@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle, @(get_dotnet_type(member.type)) value);
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_write_field_@(member.name)")]
+  private static extern void native_write_field_@(member.name)(IntPtr messageHandle, @(get_dotnet_type(member.type)) value);
 
 @[  elif isinstance(member.type, AbstractGenericString)]@
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate IntPtr NativeReadField@(get_field_name(member.type, member.name, message_class))Type(IntPtr messageHandle);
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_read_field_@(member.name)")]
+  private static extern IntPtr native_read_field_@(member.name)(IntPtr messageHandle);
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate void NativeWriteField@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle, [MarshalAs (UnmanagedType.LPStr)] string value);
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_write_field_@(member.name)")]
+  private static extern void native_write_field_@(member.name)(IntPtr messageHandle, [MarshalAs(UnmanagedType.LPStr)] string value); 
 
 @[  elif isinstance(member.type, AbstractNestedType)]@
 @[    if isinstance(member.type.value_type, BasicType)]@
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  internal delegate IntPtr NativeReadField@(get_field_name(member.type, member.name, message_class))Type(
-    out int array_size,
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_read_field_@(member.name)")]
+  private static extern IntPtr native_read_field_@(member.name)(out int array_size, IntPtr messageHandle);
+
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_write_field_@(member.name)")]
+  private static extern bool native_write_field_@(member.name)(
+    [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.@(get_marshal_type(member.type.value_type)), SizeParamIndex = 1)]
+    @(get_dotnet_type(member.type)) values,
+    int array_size,
     IntPtr messageHandle);
 
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  internal delegate bool NativeWriteField@(get_field_name(member.type, member.name, message_class))Type(
-      [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.@(get_marshal_type(member.type.value_type)), SizeParamIndex = 1)]
-      @(get_dotnet_type(member.type)) values,
-      int array_size,
-      IntPtr messageHandle);
 @[    elif isinstance(member.type.value_type, AbstractString)]@
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  internal delegate IntPtr NativeReadField@(get_field_name(member.type, member.name, message_class))Type(
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_read_field_@(member.name)")]
+  private static extern IntPtr native_read_field_@(member.name)(int index, IntPtr messageHandle);
+
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_write_field_@(member.name)")]
+  private static extern bool native_write_field_@(member.name)(
+    [MarshalAs(UnmanagedType.LPStr)] string value,
     int index,
     IntPtr messageHandle);
-
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  internal delegate bool NativeWriteField@(get_field_name(member.type, member.name, message_class))Type(
-      [MarshalAs (UnmanagedType.LPStr)] string value,
-      int index,
-      IntPtr messageHandle);
 
 @[    end if]@
 @[  end if]@
 
-@[  if isinstance(member.type, (AbstractGenericString, BasicType)) or \
-       (isinstance(member.type, AbstractNestedType) and isinstance(member.type.value_type, (BasicType, AbstractString)))]@
-  private static NativeReadField@(get_field_name(member.type, member.name, message_class))Type native_read_field_@(member.name) = null;
-  private static NativeWriteField@(get_field_name(member.type, member.name, message_class))Type native_write_field_@(member.name) = null;
-@[  elif isinstance(member.type, (NamedType, NamespacedType))]@
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate IntPtr NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle);
-  private static NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type native_get_nested_message_handle_@(member.name) = null;
+@[  if isinstance(member.type, (NamedType, NamespacedType))]@
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_get_nested_message_handle_@(member.name)")]
+  private static extern IntPtr native_get_nested_message_handle_@(member.name)(IntPtr messageHandle);
+
 @[  end if]@
 @
 @[  if isinstance(member.type, AbstractNestedType) and \
          isinstance(member.type.value_type, (NamedType, NamespacedType, AbstractString))]@
 @[    if isinstance(member.type.value_type, (NamedType, NamespacedType))]@
-  private delegate IntPtr NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle, int index);
-  private static NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type native_get_nested_message_handle_@(member.name) = null;
-@[    end if]@
-  private delegate int NativeGetArraySize@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle);
-  private static NativeGetArraySize@(get_field_name(member.type, member.name, message_class))Type native_get_array_size_@(member.name) = null;
-
-  private delegate bool NativeInitSequence@(get_field_name(member.type, member.name, message_class))Type(
-    IntPtr messageHandle, int size);
-  private static NativeInitSequence@(get_field_name(member.type, member.name, message_class))Type native_init_sequence_@(member.name) = null;
-@[  end if]@
-@[end for]@
-
-  // This is done to preload before ros2 rmw_implementation attempts to find custom message library (and fails without absolute path)
-  static private void MessageTypeSupportPreload()
-  {
-@[  if get_csbuild_tool == "Mono"]@
-    // https://www.mono-project.com/docs/faq/technical/#how-to-detect-the-execution-platform
-    bool is_linux = false;
-    int p = (int) Environment.OSVersion.Platform;
-    if ((p == 4) || (p == 6) || (p == 128)) {
-            is_linux = true;
-    }
-    if (is_linux)
-@[  else]@
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-@[  end if]@
-    { //only affects Linux since on Windows PATH can be set effectively, dynamically
-        const string rmw_fastrtps = "rmw_fastrtps_cpp";
-        var rmw_implementation = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
-        if (rmw_implementation == null)
-        {
-          var ros_distro = Environment.GetEnvironmentVariable("ROS_DISTRO");
-          if (ros_distro == "galactic")
-          { // no preloads for CycloneDDS, default for galactic
-            return;
-          }
-          rmw_implementation = rmw_fastrtps; // default for all other distros
-        }
-
-        // TODO - generalize to Connext and other implementations
-        if (rmw_implementation == rmw_fastrtps)
-        { // TODO - get rcl level constants, e.g. rosidl_typesupport_fastrtps_c__identifier
-          // Load typesupport for fastrtps (_c depends on _cpp)
-          var loadUtils = DllLoadUtilsFactory.GetDllLoadUtils();
-          IntPtr messageLibraryTypesupportFastRTPS_CPP = loadUtils.LoadLibraryNoSuffix("@(package_name)__rosidl_typesupport_fastrtps_cpp");
-          IntPtr messageLibraryTypesupportFastRTPS_C = loadUtils.LoadLibraryNoSuffix("@(package_name)__rosidl_typesupport_fastrtps_c");
-      }
-    }
-  }
-
-  static @(message_class)()
-  {
-    dllLoadUtils = DllLoadUtilsFactory.GetDllLoadUtils();
-    IntPtr messageLibraryTypesupport = dllLoadUtils.LoadLibraryNoSuffix("@(package_name)__rosidl_typesupport_c");
-    IntPtr messageLibraryGenerator = dllLoadUtils.LoadLibraryNoSuffix("@(package_name)__rosidl_generator_c");
-    IntPtr messageLibraryIntro = dllLoadUtils.LoadLibraryNoSuffix("@(package_name)__rosidl_typesupport_introspection_c");
-    MessageTypeSupportPreload();
-
-    IntPtr nativelibrary = dllLoadUtils.LoadLibrary("@(package_name)_@(message_class_lower)__rosidl_typesupport_c");
-    IntPtr native_get_typesupport_ptr = dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_get_type_support");
-    @(message_class).native_get_typesupport = (NativeGetTypeSupportType)Marshal.GetDelegateForFunctionPointer(
-      native_get_typesupport_ptr, typeof(NativeGetTypeSupportType));
-
-    IntPtr native_create_native_message_ptr = dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_create_native_message");
-    @(message_class).native_create_native_message = (NativeCreateNativeMessageType)Marshal.GetDelegateForFunctionPointer(
-      native_create_native_message_ptr, typeof(NativeCreateNativeMessageType));
-
-    IntPtr native_destroy_native_message_ptr = dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_destroy_native_message");
-    @(message_class).native_destroy_native_message = (NativeDestroyNativeMessageType)Marshal.GetDelegateForFunctionPointer(
-      native_destroy_native_message_ptr, typeof(NativeDestroyNativeMessageType));
-
-@[for member in message.structure.members]@
-@[  if isinstance(member.type, (BasicType, AbstractGenericString)) or \
-       (isinstance(member.type, AbstractNestedType) and \
-        isinstance(member.type.value_type, (BasicType, AbstractString)))]@
-    IntPtr native_read_field_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_read_field_@(member.name)");
-    @(message_class).native_read_field_@(member.name) =
-      (NativeReadField@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-      native_read_field_@(member.name)_ptr, typeof(NativeReadField@(get_field_name(member.type, member.name, message_class))Type));
-
-    IntPtr native_write_field_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_write_field_@(member.name)");
-    @(message_class).native_write_field_@(member.name) =
-      (NativeWriteField@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-      native_write_field_@(member.name)_ptr, typeof(NativeWriteField@(get_field_name(member.type, member.name, message_class))Type));
-@[  elif isinstance(member.type, (NamedType, NamespacedType))]@
-    IntPtr native_get_nested_message_handle_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_get_nested_message_handle_@(member.name)");
-    @(message_class).native_get_nested_message_handle_@(member.name) =
-      (NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-      native_get_nested_message_handle_@(member.name)_ptr, typeof(NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type));
-@[  end if]@
-@[  if isinstance(member.type, AbstractNestedType) and \
-       isinstance(member.type.value_type, (NamedType, NamespacedType, AbstractString))]@
-@[    if isinstance(member.type.value_type, (NamedType, NamespacedType))]@
-
-    IntPtr native_get_nested_message_handle_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_get_nested_message_handle_@(member.name)");
-    @(message_class).native_get_nested_message_handle_@(member.name) =
-      (NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-    native_get_nested_message_handle_@(member.name)_ptr, typeof(NativeGetNestedHandle@(get_field_name(member.type, member.name, message_class))Type));
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_get_nested_message_handle_@(member.name)")]
+  private static extern IntPtr native_get_nested_message_handle_@(member.name)(IntPtr messageHandle, int index);
 @[    end if]@
 
-    IntPtr native_get_array_size_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_get_array_size_@(member.name)");
-    @(message_class).native_get_array_size_@(member.name) =
-      (NativeGetArraySize@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-    native_get_array_size_@(member.name)_ptr, typeof(NativeGetArraySize@(get_field_name(member.type, member.name, message_class))Type));
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_get_array_size_@(member.name)")]
+  private static extern int native_get_array_size_@(member.name)(IntPtr messageHandle);
 
-    IntPtr native_init_sequence_@(member.name)_ptr =
-      dllLoadUtils.GetProcAddress(nativelibrary, "@(c_full_name)_native_init_sequence_@(member.name)");
-    @(message_class).native_init_sequence_@(member.name) =
-      (NativeInitSequence@(get_field_name(member.type, member.name, message_class))Type)Marshal.GetDelegateForFunctionPointer(
-    native_init_sequence_@(member.name)_ptr, typeof(NativeInitSequence@(get_field_name(member.type, member.name, message_class))Type));
+  [DllImport(
+    NATIVE_LIBRARY,
+    ExactSpelling = true,
+    CallingConvention = CallingConvention.Cdecl,
+    EntryPoint = "@(c_full_name)_native_init_sequence_@(member.name)")]
+  private static extern bool native_init_sequence_@(member.name)(IntPtr messageHandle, int size);
+
 @[  end if]@
 @[end for]@
-  }
 
   public IntPtr TypeSupportHandle
   {
