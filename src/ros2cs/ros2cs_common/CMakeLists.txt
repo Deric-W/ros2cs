@@ -27,7 +27,6 @@ find_package(DotNETExtra REQUIRED)
 
 set(CS_INTERFACES
   Message.cs
-  DllLoadUtils.cs
   Exceptions.cs
   Ros2csLogger.cs
   MessageInternals.cs
